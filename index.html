@@ -265,11 +265,12 @@
     <div class="filter-bar">
       <input type="text" id="catSearch" placeholder="Buscar por código ou produto…">
       <div id="catChips" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+      <button type="button" class="btn btn-primary btn-sm" id="openNewProduto" style="margin-left:auto;">+ Novo Produto</button>
     </div>
     <div class="facet-panel" style="padding:6px 18px;">
       <table>
         <thead>
-          <tr><th class="mono">Código</th><th>Categoria</th><th>Produto</th><th>Unid.</th><th class="num">Atual</th><th class="num">Mínimo</th><th>Status</th></tr>
+          <tr><th class="mono">Código</th><th>Categoria</th><th>Produto</th><th>Unid.</th><th class="num">Atual</th><th class="num">Mínimo</th><th>Status</th><th></th></tr>
         </thead>
         <tbody id="catTbody"></tbody>
       </table>
@@ -389,11 +390,53 @@
   </div>
 </div>
 
+<!-- ===================== MODAL: NOVO PRODUTO ===================== -->
+<div class="overlay" id="produtoOverlay">
+  <div class="modal">
+    <h3>Novo Produto</h3>
+    <div class="sub">Adiciona um item ao catálogo de estoque.</div>
+    <div class="field-row two">
+      <div class="field"><label>Código</label><input type="text" id="pCodigo" placeholder="Ex: VG-040"></div>
+      <div class="field"><label>Categoria</label><input type="text" id="pCategoria" placeholder="Ex: Uniformes" list="pCategoriaList"></div>
+      <datalist id="pCategoriaList"></datalist>
+    </div>
+    <div class="field" style="margin-top:12px;">
+      <label>Produto</label>
+      <input type="text" id="pProduto" placeholder="Nome do produto">
+    </div>
+    <div class="field-row two" style="margin-top:12px;">
+      <div class="field"><label>Unidade</label><input type="text" id="pUnidade" placeholder="UN, PAR, CX..."></div>
+      <div class="field"></div>
+    </div>
+    <div class="field-row two" style="margin-top:12px;">
+      <div class="field"><label>Estoque Atual</label><input type="number" id="pEstoqueAtual" min="0" value="0"></div>
+      <div class="field"><label>Estoque Mínimo</label><input type="number" id="pEstoqueMinimo" min="0" value="0"></div>
+    </div>
+    <div class="err-msg" id="pErr"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="pCancel">Cancelar</button>
+      <button class="btn btn-primary" id="pConfirm">Adicionar Produto</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== MODAL: CONFIRMAR EXCLUSÃO DE PRODUTO ===================== -->
+<div class="overlay" id="delProdutoOverlay">
+  <div class="modal" style="max-width:400px;">
+    <h3>Excluir produto</h3>
+    <div class="sub">Remove definitivamente este item do catálogo. Essa operação não pode ser desfeita.</div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="delProdutoCancel">Cancelar</button>
+      <button class="btn btn-danger" id="delProdutoConfirm">Excluir Definitivamente</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast-wrap" id="toastWrap"></div>
 
 <script>
 
-const API_URL = "https://script.google.com/macros/s/AKfycbzn7Z4ohgk1JmSPoCs16wXwPUOkWkGnnBIaKhFIVSAFvJtNkHQAgspg9sYoDscM1wphFg/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbx3-mWSUJUbTSKyCUaum8bniF2H242im0vb-XXKHaNA0-BdRbMXR-ut7qSthWPZzDpAKg/exec";
 
 /* ---------------- estado ---------------- */
 let catalogo = [];
@@ -509,6 +552,7 @@ function renderCatalogo(){
       <td class="num"><input type="number" min="0" value="${p.estoqueAtual}" class="estoque-input" data-codigo="${escapeHtml(p.codigo)}"></td>
       <td class="num">${p.estoqueMinimo}</td>
       <td>${ok ? '<span class="badge ok">✔ OK</span>' : '<span class="badge repor">⚠ Repor</span>'}</td>
+      <td><button type="button" class="remove-row del-produto" data-codigo="${escapeHtml(p.codigo)}" title="Excluir produto">×</button></td>
     </tr>`;
   }).join('');
   document.querySelectorAll('.estoque-input').forEach(inp=>{
@@ -526,8 +570,60 @@ function renderCatalogo(){
       }
     });
   });
+  document.querySelectorAll('.del-produto').forEach(btn=>{
+    btn.addEventListener('click', ()=> openDeleteProduto(btn.dataset.codigo));
+  });
 }
 document.getElementById('catSearch').addEventListener('input', renderCatalogo);
+
+/* ---------------- novo produto ---------------- */
+const produtoOverlay = document.getElementById('produtoOverlay');
+document.getElementById('openNewProduto').onclick = () => {
+  document.getElementById('pCodigo').value = '';
+  document.getElementById('pCategoria').value = '';
+  document.getElementById('pProduto').value = '';
+  document.getElementById('pUnidade').value = '';
+  document.getElementById('pEstoqueAtual').value = 0;
+  document.getElementById('pEstoqueMinimo').value = 0;
+  document.getElementById('pErr').textContent = '';
+  document.getElementById('pCategoriaList').innerHTML = [...new Set(catalogo.map(p=>p.categoria))]
+    .map(c=>`<option value="${escapeHtml(c)}">`).join('');
+  produtoOverlay.classList.add('open');
+};
+document.getElementById('pCancel').onclick = () => produtoOverlay.classList.remove('open');
+document.getElementById('pConfirm').onclick = async () => {
+  const codigo = document.getElementById('pCodigo').value.trim();
+  const categoria = document.getElementById('pCategoria').value.trim();
+  const produto = document.getElementById('pProduto').value.trim();
+  const unidade = document.getElementById('pUnidade').value.trim();
+  const estoqueAtual = Math.max(0, parseInt(document.getElementById('pEstoqueAtual').value||'0',10));
+  const estoqueMinimo = Math.max(0, parseInt(document.getElementById('pEstoqueMinimo').value||'0',10));
+  const errEl = document.getElementById('pErr');
+  if(!codigo){ errEl.textContent = 'Informe o código do produto.'; return; }
+  if(!produto){ errEl.textContent = 'Informe o nome do produto.'; return; }
+  errEl.textContent = 'Adicionando...';
+  const res = await api('addProduto', {codigo, categoria, produto, unidade, estoqueAtual, estoqueMinimo});
+  if(res.ok){
+    produtoOverlay.classList.remove('open');
+    toast('Produto adicionado ao catálogo.');
+    await loadAll();
+    renderCatalogo();
+  } else {
+    errEl.textContent = res.error || 'Erro ao adicionar produto.';
+  }
+};
+
+/* ---------------- excluir produto ---------------- */
+const delProdutoOverlay = document.getElementById('delProdutoOverlay');
+let delProdutoCodigo = null;
+function openDeleteProduto(codigo){ delProdutoCodigo = codigo; delProdutoOverlay.classList.add('open'); }
+document.getElementById('delProdutoCancel').onclick = () => delProdutoOverlay.classList.remove('open');
+document.getElementById('delProdutoConfirm').onclick = async () => {
+  const res = await api('deleteProduto', {codigo: delProdutoCodigo});
+  delProdutoOverlay.classList.remove('open');
+  if(res.ok){ toast('Produto excluído.'); await loadAll(); renderCatalogo(); }
+  else { toast(res.error || 'Erro ao excluir produto.', true); }
+};
 
 /* ---------------- formulário: itens dinâmicos ---------------- */
 function populateProdutoSelect(){

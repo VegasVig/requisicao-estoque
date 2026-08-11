@@ -145,6 +145,8 @@ function doPost(e) {
       case 'approve': return respond_(aprovarSolicitacao_(data));
       case 'delete': return respond_(excluirSolicitacao_(data));
       case 'updateEstoque': return respond_(atualizarEstoque_(data));
+      case 'addProduto': return respond_(adicionarProduto_(data));
+      case 'deleteProduto': return respond_(excluirProduto_(data));
       default: return respond_({ ok: false, error: 'Ação POST desconhecida.' });
     }
   } catch (err) {
@@ -288,6 +290,46 @@ function atualizarEstoque_(data) {
   for (var i = 1; i < values.length; i++) {
     if (values[i][0] === data.codigo) {
       sh.getRange(i + 1, 5).setValue(Number(data.estoqueAtual) || 0); // coluna estoqueAtual
+      return { ok: true };
+    }
+  }
+  return { ok: false, error: 'Código não encontrado no catálogo.' };
+}
+
+function adicionarProduto_(data) {
+  var sh = sheets_().cat;
+  var codigo = String(data.codigo || '').trim();
+  var produto = String(data.produto || '').trim();
+
+  if (!codigo) return { ok: false, error: 'Informe o código do produto.' };
+  if (!produto) return { ok: false, error: 'Informe o nome do produto.' };
+
+  var values = sh.getDataRange().getValues();
+  for (var i = 1; i < values.length; i++) {
+    if (String(values[i][0]).trim().toLowerCase() === codigo.toLowerCase()) {
+      return { ok: false, error: 'Já existe um produto com esse código no catálogo.' };
+    }
+  }
+
+  var newRow = sh.getLastRow() + 1;
+  sh.getRange(newRow, 1, 1, HEADERS_CATALOGO.length).setValues([[
+    codigo,
+    String(data.categoria || '').trim() || 'Sem categoria',
+    produto,
+    String(data.unidade || '').trim() || 'UN',
+    Number(data.estoqueAtual) || 0,
+    Number(data.estoqueMinimo) || 0
+  ]]);
+  return { ok: true, codigo: codigo };
+}
+
+function excluirProduto_(data) {
+  var sh = sheets_().cat;
+  var codigo = String(data.codigo || '').trim();
+  var values = sh.getDataRange().getValues();
+  for (var i = 1; i < values.length; i++) {
+    if (String(values[i][0]).trim() === codigo) {
+      sh.deleteRow(i + 1);
       return { ok: true };
     }
   }
